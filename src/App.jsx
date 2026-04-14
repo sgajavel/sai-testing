@@ -1,56 +1,122 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import './index.css';
-import { INITIAL_TASKS } from './data/projectData';
+import { INITIAL_JOBS, INITIAL_CANDIDATES } from './data/hiringData';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
-import Timeline from './components/Timeline';
-import Tasks from './components/Tasks';
-import Team from './components/Team';
+import Jobs from './components/Jobs';
+import Pipeline from './components/Pipeline';
+import CandidateModal from './components/CandidateModal';
+import JobModal from './components/JobModal';
 
 export default function App() {
+  const [jobs, setJobs] = useState(INITIAL_JOBS);
+  const [candidates, setCandidates] = useState(INITIAL_CANDIDATES);
   const [activeView, setActiveView] = useState('dashboard');
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [jobFilter, setJobFilter] = useState('all');
+  const [selectedCandidateId, setSelectedCandidateId] = useState(null);
+  const [showJobModal, setShowJobModal] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
 
-  const handleUpdateTask = (id, updates) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-  };
+  const handleUpdateCandidate = useCallback((id, updates) => {
+    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  }, []);
 
-  const handleAddTask = (task) => {
-    setTasks(prev => [...prev, task]);
-  };
+  const handleAddCandidate = useCallback((candidate) => {
+    setCandidates(prev => [...prev, { ...candidate, id: `c-${Date.now()}` }]);
+  }, []);
 
-  const handleDeleteTask = (id) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
-  };
+  const handleDeleteCandidate = useCallback((id) => {
+    setCandidates(prev => prev.filter(c => c.id !== id));
+    setSelectedCandidateId(null);
+  }, []);
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <Dashboard tasks={tasks} />;
-      case 'timeline':
-        return <Timeline tasks={tasks} onUpdateTask={handleUpdateTask} />;
-      case 'tasks':
-        return (
-          <Tasks
-            tasks={tasks}
-            onUpdateTask={handleUpdateTask}
-            onAddTask={handleAddTask}
-            onDeleteTask={handleDeleteTask}
-          />
-        );
-      case 'team':
-        return <Team tasks={tasks} />;
-      default:
-        return <Dashboard tasks={tasks} />;
-    }
-  };
+  const handleAddJob = useCallback((jobData) => {
+    setJobs(prev => [...prev, {
+      ...jobData,
+      id: `job-${Date.now()}`,
+      postedAt: new Date().toISOString().split('T')[0],
+      status: 'active',
+    }]);
+  }, []);
+
+  const handleUpdateJob = useCallback((id, updates) => {
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, ...updates } : j));
+  }, []);
+
+  const selectedCandidate = candidates.find(c => c.id === selectedCandidateId) ?? null;
+  const selectedCandidateJob = selectedCandidate ? jobs.find(j => j.id === selectedCandidate.jobId) : null;
+
+  const openJobModal = (job = null) => { setEditingJob(job); setShowJobModal(true); };
+  const closeJobModal = () => { setShowJobModal(false); setEditingJob(null); };
+  const goToPipeline = (jobId = 'all') => { setJobFilter(jobId); setActiveView('pipeline'); };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <Sidebar activeView={activeView} setActiveView={setActiveView} tasks={tasks} />
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        {renderView()}
+    <div className="app-layout">
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        jobs={jobs}
+        candidates={candidates}
+        onSelectCandidate={setSelectedCandidateId}
+      />
+
+      <main className="app-main">
+        {activeView === 'dashboard' && (
+          <Dashboard
+            jobs={jobs}
+            candidates={candidates}
+            onViewPipeline={goToPipeline}
+            onViewJobs={() => setActiveView('jobs')}
+            onSelectCandidate={setSelectedCandidateId}
+          />
+        )}
+        {activeView === 'jobs' && (
+          <Jobs
+            jobs={jobs}
+            candidates={candidates}
+            onAddJob={() => openJobModal(null)}
+            onEditJob={(job) => openJobModal(job)}
+            onUpdateJob={handleUpdateJob}
+            onViewPipeline={goToPipeline}
+          />
+        )}
+        {activeView === 'pipeline' && (
+          <Pipeline
+            jobs={jobs}
+            candidates={candidates}
+            jobFilter={jobFilter}
+            onFilterChange={setJobFilter}
+            onUpdateCandidate={handleUpdateCandidate}
+            onSelectCandidate={setSelectedCandidateId}
+            onAddCandidate={handleAddCandidate}
+          />
+        )}
       </main>
+
+      {selectedCandidate && (
+        <CandidateModal
+          candidate={selectedCandidate}
+          job={selectedCandidateJob}
+          onClose={() => setSelectedCandidateId(null)}
+          onUpdate={(updates) => handleUpdateCandidate(selectedCandidateId, updates)}
+          onDelete={() => handleDeleteCandidate(selectedCandidateId)}
+        />
+      )}
+
+      {showJobModal && (
+        <JobModal
+          job={editingJob}
+          onClose={closeJobModal}
+          onSave={(data) => {
+            if (editingJob) {
+              handleUpdateJob(editingJob.id, data);
+            } else {
+              handleAddJob(data);
+            }
+            closeJobModal();
+          }}
+        />
+      )}
     </div>
   );
 }

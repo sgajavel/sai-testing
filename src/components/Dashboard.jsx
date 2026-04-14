@@ -1,228 +1,263 @@
-import React from 'react';
-import { CATEGORIES, TEAM_MEMBERS, MILESTONES } from '../data/projectData';
+import { Briefcase, Users, TrendingUp, CheckCircle, Clock, ArrowRight, ChevronRight } from 'lucide-react';
+import { PIPELINE_STAGES } from '../data/hiringData';
 
-const CURRENT_WEEK = 3;
+const fmt = (n) => n?.toLocaleString() ?? '—';
 
-function getCategoryColor(cat) {
-  const map = {
-    Design: '#f59e0b', Development: '#6366f1', Content: '#10b981',
-    Marketing: '#ec4899', Testing: '#06b6d4', Launch: '#f97316',
+function StatCard({ icon: Icon, iconBg, label, value, sub, subColor }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-icon" style={{ background: iconBg }}>
+        <Icon size={18} style={{ color: 'white' }} />
+      </div>
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+      {sub && (
+        <div className="stat-change" style={{ color: subColor ?? 'var(--text-muted)' }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StageBar({ stage, count, max }) {
+  const pct = max > 0 ? (count / max) * 100 : 0;
+  return (
+    <div className="stage-bar-row">
+      <div className="stage-bar-label">{stage.label}</div>
+      <div className="stage-bar-track">
+        <div
+          className="stage-bar-fill"
+          style={{ width: `${pct}%`, background: stage.color }}
+        />
+      </div>
+      <div className="stage-bar-count">{count}</div>
+    </div>
+  );
+}
+
+export default function Dashboard({ jobs, candidates, onViewPipeline, onViewJobs, onSelectCandidate }) {
+  const activeJobs = jobs.filter(j => j.status === 'active');
+  const activeCandidates = candidates.filter(c => c.stage !== 'hired');
+  const hired = candidates.filter(c => c.stage === 'hired');
+  const today = new Date('2026-04-14');
+
+  // Avg days in pipeline for hired candidates
+  const avgDays = hired.length > 0
+    ? Math.round(hired.reduce((acc, c) => {
+        const diff = (today - new Date(c.appliedAt)) / (1000 * 60 * 60 * 24);
+        return acc + diff;
+      }, 0) / hired.length)
+    : null;
+
+  // Candidates by stage
+  const stageCounts = PIPELINE_STAGES.map(s => ({
+    ...s,
+    count: candidates.filter(c => c.stage === s.id).length,
+  }));
+  const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
+
+  // Roles by urgency (open longest with fewest late-stage candidates)
+  const urgentRoles = activeJobs.map(job => {
+    const jobCandidates = candidates.filter(c => c.jobId === job.id);
+    const lateStage = jobCandidates.filter(c =>
+      ['panel_interview', 'final_interview', 'offer_extended'].includes(c.stage)
+    ).length;
+    const daysOpen = Math.floor((today - new Date(job.postedAt)) / (1000 * 60 * 60 * 24));
+    return { ...job, candidateCount: jobCandidates.length, lateStage, daysOpen };
+  }).sort((a, b) => b.daysOpen - a.daysOpen);
+
+  // Recent candidate activity (last 5 updated)
+  const recentCandidates = [...candidates]
+    .filter(c => c.notes.length > 0)
+    .sort((a, b) => {
+      const aDate = a.notes[a.notes.length - 1]?.date ?? a.appliedAt;
+      const bDate = b.notes[b.notes.length - 1]?.date ?? b.appliedAt;
+      return new Date(bDate) - new Date(aDate);
+    })
+    .slice(0, 5);
+
+  const getStage = (id) => PIPELINE_STAGES.find(s => s.id === id);
+  const daysAgoLabel = (dateStr) => {
+    const diff = Math.floor((today - new Date(dateStr)) / (1000 * 60 * 60 * 24));
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return `${diff}d ago`;
   };
-  return map[cat] || '#9399b2';
-}
-
-function getStatusColor(status) {
-  if (status === 'Completed') return '#10b981';
-  if (status === 'In Progress') return '#6366f1';
-  if (status === 'Blocked') return '#ef4444';
-  return '#5c6380';
-}
-
-function StatCard({ label, value, sub, color, icon }) {
-  return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>{label}</div>
-          <div style={{ fontSize: '32px', fontWeight: '800', color: color || 'var(--text-primary)', lineHeight: 1 }}>{value}</div>
-        </div>
-        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${color || 'var(--accent)'}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>{icon}</div>
-      </div>
-      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{sub}</div>
-    </div>
-  );
-}
-
-function CategoryProgress({ category, tasks }) {
-  const catTasks = tasks.filter(t => t.category === category);
-  const done = catTasks.filter(t => t.status === 'Completed').length;
-  const inProgress = catTasks.filter(t => t.status === 'In Progress').length;
-  const blocked = catTasks.filter(t => t.status === 'Blocked').length;
-  const pct = catTasks.length ? Math.round((done / catTasks.length) * 100) : 0;
-  const color = getCategoryColor(category);
 
   return (
-    <div style={{ marginBottom: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: color }} />
-          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{category}</span>
-        </div>
-        <div style={{ display: 'flex', align: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{done}/{catTasks.length}</span>
-          <span style={{ fontSize: '13px', fontWeight: '700', color }}>{pct}%</span>
-        </div>
-      </div>
-      <div className="progress-bar">
-        <div className="progress-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}, ${color}cc)` }} />
-      </div>
-      <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
-        {inProgress > 0 && <span style={{ fontSize: '11px', color: '#6366f1' }}>{inProgress} in progress</span>}
-        {blocked > 0 && <span style={{ fontSize: '11px', color: '#ef4444' }}>{blocked} blocked</span>}
-      </div>
-    </div>
-  );
-}
-
-function MilestoneItem({ milestone, isCurrent, isPast }) {
-  return (
-    <div style={{
-      display: 'flex', gap: '12px', padding: '12px 0',
-      borderBottom: '1px solid var(--border)',
-      opacity: isPast ? 0.6 : 1,
-    }}>
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-        <div style={{
-          width: '32px', height: '32px', borderRadius: '50%',
-          background: isPast ? 'var(--status-completed)' : isCurrent ? 'var(--accent)' : 'var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '12px', fontWeight: '700', color: 'white',
-          flexShrink: 0,
-          boxShadow: isCurrent ? '0 0 0 4px var(--accent-dim)' : 'none',
-        }}>
-          {isPast ? '✓' : milestone.week}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: '13px', fontWeight: '600', color: isCurrent ? 'var(--accent-light)' : 'var(--text-primary)' }}>{milestone.title}</div>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{milestone.description}</div>
-        <div style={{ fontSize: '11px', color: isPast ? 'var(--status-completed)' : isCurrent ? 'var(--accent)' : 'var(--text-muted)', marginTop: '4px', fontWeight: '600' }}>
-          {isPast ? 'Completed' : isCurrent ? '← Current' : `Week ${milestone.week}`}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RecentActivity({ tasks }) {
-  const recent = [...tasks]
-    .filter(t => t.status !== 'Not Started')
-    .slice(0, 6);
-
-  return (
-    <div>
-      {recent.map((task, i) => (
-        <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: i < recent.length - 1 ? '1px solid var(--border)' : 'none' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: getStatusColor(task.status), flexShrink: 0 }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="truncate" style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: '500' }}>{task.title}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>{task.category} · {task.status}</div>
-          </div>
-          <span className="badge" style={{ background: `${getCategoryColor(task.category)}20`, color: getCategoryColor(task.category), flexShrink: 0 }}>
-            {task.category}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function TeamWorkload({ tasks }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {TEAM_MEMBERS.map(member => {
-        const memberTasks = tasks.filter(t => t.assignee === member.id);
-        const done = memberTasks.filter(t => t.status === 'Completed').length;
-        const inProg = memberTasks.filter(t => t.status === 'In Progress').length;
-        return (
-          <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div className="avatar" style={{ background: member.color }}>{member.avatar}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)' }}>{member.name}</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{done}/{memberTasks.length} done</span>
-              </div>
-              <div className="progress-bar" style={{ height: '4px' }}>
-                <div className="progress-fill" style={{
-                  width: `${memberTasks.length ? (done / memberTasks.length) * 100 : 0}%`,
-                  background: `linear-gradient(90deg, ${member.color}, ${member.color}aa)`,
-                }} />
-              </div>
-            </div>
-            {inProg > 0 && (
-              <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: '600', flexShrink: 0 }}>{inProg} active</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export default function Dashboard({ tasks }) {
-  const total = tasks.length;
-  const completed = tasks.filter(t => t.status === 'Completed').length;
-  const inProgress = tasks.filter(t => t.status === 'In Progress').length;
-  const blocked = tasks.filter(t => t.status === 'Blocked').length;
-  const notStarted = tasks.filter(t => t.status === 'Not Started').length;
-  const overallPct = Math.round((completed / total) * 100);
-
-  const upcomingMilestones = MILESTONES.filter(m => m.week >= CURRENT_WEEK).slice(0, 4);
-  const pastMilestones = MILESTONES.filter(m => m.week < CURRENT_WEEK);
-
-  const priorityCritical = tasks.filter(t => t.priority === 'Critical' && t.status !== 'Completed').length;
-
-  return (
-    <div className="fade-in" style={{ padding: '28px', maxWidth: '1400px' }}>
+    <div className="dashboard">
       {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text-primary)', marginBottom: '4px' }}>
-          Project Dashboard
-        </h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>E-Commerce Launch · Week 3 of 10 · Target: Go-Live in 7 weeks</p>
-      </div>
-
-      {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '28px' }}>
-        <StatCard label="Overall Progress" value={`${overallPct}%`} sub={`${completed} of ${total} tasks completed`} color="var(--accent-light)" icon="🎯" />
-        <StatCard label="In Progress" value={inProgress} sub="Actively being worked on" color="#6366f1" icon="⚡" />
-        <StatCard label="Completed" value={completed} sub={`${notStarted} tasks remaining`} color="#10b981" icon="✅" />
-        <StatCard label="Blocked" value={blocked} sub="Need immediate attention" color={blocked > 0 ? '#ef4444' : '#5c6380'} icon="⚠️" />
-        <StatCard label="Critical Tasks" value={priorityCritical} sub="High-priority items pending" color={priorityCritical > 0 ? '#f97316' : '#5c6380'} icon="🔥" />
-      </div>
-
-      {/* Main Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', marginBottom: '20px' }}>
-        {/* Category Breakdown */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>Progress by Category</h2>
-            <span className="badge" style={{ background: 'var(--accent-dim)', color: 'var(--accent-light)' }}>
-              {overallPct}% overall
-            </span>
-          </div>
-          {CATEGORIES.map(cat => (
-            <CategoryProgress key={cat} category={cat} tasks={tasks} />
-          ))}
-        </div>
-
-        {/* Milestones */}
-        <div className="card">
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>Milestones</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>10-week launch timeline</p>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            {pastMilestones.map(m => <MilestoneItem key={m.id} milestone={m} isPast={true} isCurrent={false} />)}
-            {MILESTONES.filter(m => m.week >= CURRENT_WEEK).map((m, i) => (
-              <MilestoneItem key={m.id} milestone={m} isPast={false} isCurrent={i === 0} />
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>Hiring Dashboard</h1>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 3 }}>
+              Velocity Labs — Go-To-Market Recruiting &middot; Q2 2026
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary btn-sm" onClick={onViewJobs}>View Jobs</button>
+            <button className="btn btn-primary btn-sm" onClick={() => onViewPipeline('all')}>
+              Open Pipeline
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="stats-grid">
+        <StatCard
+          icon={Briefcase}
+          iconBg="linear-gradient(135deg,#6366f1,#8b5cf6)"
+          label="Open Positions"
+          value={activeJobs.length}
+          sub="Across GTM org"
+        />
+        <StatCard
+          icon={Users}
+          iconBg="linear-gradient(135deg,#ec4899,#f97316)"
+          label="Active Candidates"
+          value={activeCandidates.length}
+          sub="In pipeline"
+        />
+        <StatCard
+          icon={CheckCircle}
+          iconBg="linear-gradient(135deg,#10b981,#059669)"
+          label="Hired This Quarter"
+          value={hired.length}
+          sub="Target: 6"
+          subColor={hired.length >= 4 ? 'var(--green)' : 'var(--amber)'}
+        />
+        <StatCard
+          icon={Clock}
+          iconBg="linear-gradient(135deg,#f59e0b,#f97316)"
+          label="Avg. Days to Hire"
+          value={avgDays != null ? `${avgDays}d` : '—'}
+          sub={avgDays != null ? (avgDays <= 45 ? 'On track' : 'Above target') : 'No hires yet'}
+          subColor={avgDays != null && avgDays <= 45 ? 'var(--green)' : 'var(--amber)'}
+        />
+      </div>
+
+      {/* Middle row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
+        {/* Pipeline by stage */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Candidates by Stage</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>All active roles combined</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => onViewPipeline('all')} style={{ gap: 4 }}>
+              View <ArrowRight size={13} />
+            </button>
+          </div>
+          <div className="stage-bars">
+            {stageCounts.map(s => (
+              <StageBar key={s.id} stage={s} count={s.count} max={maxCount} />
             ))}
           </div>
         </div>
+
+        {/* Open roles urgency */}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Open Roles</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Sorted by time open</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={onViewJobs} style={{ gap: 4 }}>
+              Manage <ArrowRight size={13} />
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {urgentRoles.map(role => {
+              const isUrgent = role.daysOpen > 30 && role.lateStage === 0;
+              return (
+                <div key={role.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 12px', borderRadius: 10,
+                    background: 'var(--bg-secondary)',
+                    border: `1px solid ${isUrgent ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  }}
+                  onClick={() => onViewPipeline(role.id)}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {role.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                      {role.candidateCount} candidates &middot; {role.lateStage} late-stage
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isUrgent ? 'var(--red)' : 'var(--text-muted)' }}>
+                      {role.daysOpen}d open
+                    </div>
+                    {isUrgent && (
+                      <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>Needs attention</div>
+                    )}
+                  </div>
+                  <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Bottom Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-        {/* Recent Activity */}
-        <div className="card">
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>Active Tasks</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Tasks currently in progress or completed</p>
-          <RecentActivity tasks={tasks} />
+      {/* Recent activity */}
+      <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Recent Interview Activity</div>
+          <button className="btn btn-ghost btn-sm" onClick={() => onViewPipeline('all')} style={{ gap: 4 }}>
+            View Pipeline <ArrowRight size={13} />
+          </button>
         </div>
-
-        {/* Team Workload */}
-        <div className="card">
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>Team Workload</h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px' }}>Task completion per team member</p>
-          <TeamWorkload tasks={tasks} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {recentCandidates.map((c, i) => {
+            const stage = getStage(c.stage);
+            const lastNote = c.notes[c.notes.length - 1];
+            const job = null; // just show stage
+            return (
+              <div
+                key={c.id}
+                onClick={() => onSelectCandidate?.(c.id)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  padding: '10px 8px', margin: '0 -8px',
+                  borderRadius: 8,
+                  borderBottom: i < recentCandidates.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div className="avatar avatar-md" style={{ background: c.avatarColor }}>
+                  {c.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-hover)', textDecoration: 'underline', textDecorationColor: 'transparent', transition: 'text-decoration-color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.textDecorationColor = 'var(--accent-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.textDecorationColor = 'transparent'}
+                    >{c.name}</span>
+                    <span className="badge" style={{ background: stage?.bg, color: stage?.color }}>
+                      {stage?.label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {lastNote?.content?.slice(0, 90)}{lastNote?.content?.length > 90 ? '…' : ''}
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}>
+                  {daysAgoLabel(lastNote?.date ?? c.appliedAt)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
