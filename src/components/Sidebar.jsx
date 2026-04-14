@@ -1,4 +1,5 @@
 import { LayoutDashboard, Briefcase, Kanban, Settings, Zap } from 'lucide-react';
+import { PIPELINE_STAGES } from '../data/hiringData';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard',    icon: LayoutDashboard },
@@ -6,7 +7,7 @@ const NAV_ITEMS = [
   { id: 'jobs',      label: 'Job Postings', icon: Briefcase       },
 ];
 
-export default function Sidebar({ activeView, setActiveView, jobs, candidates }) {
+export default function Sidebar({ activeView, setActiveView, jobs, candidates, onSelectCandidate }) {
   const openJobs = jobs.filter(j => j.status === 'active').length;
   const activeCandidates = candidates.filter(c => c.stage !== 'hired').length;
   const hired = candidates.filter(c => c.stage === 'hired').length;
@@ -47,41 +48,81 @@ export default function Sidebar({ activeView, setActiveView, jobs, candidates })
 
         <div className="sidebar-section-label" style={{ marginTop: 14 }}>At a Glance</div>
         {[
-          { label: 'Active Candidates', value: activeCandidates, color: '#6366f1' },
-          { label: 'Hired This Quarter', value: hired,           color: '#10b981' },
-          { label: 'Open Roles',         value: openJobs,        color: '#f59e0b' },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '5px 10px', borderRadius: 8,
-          }}>
+          { label: 'Active Candidates', value: activeCandidates, color: '#6366f1', view: 'pipeline' },
+          { label: 'Hired This Quarter', value: hired,            color: '#10b981', view: 'pipeline' },
+          { label: 'Open Roles',         value: openJobs,         color: '#f59e0b', view: 'jobs'     },
+        ].map(({ label, value, color, view }) => (
+          <button
+            key={label}
+            onClick={() => setActiveView(view)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '5px 10px', borderRadius: 8, width: '100%',
+              background: 'none', border: 'none', cursor: 'pointer',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
             <span style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
               {label}
             </span>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{value}</span>
-          </div>
+          </button>
         ))}
 
-        <div className="sidebar-section-label" style={{ marginTop: 14 }}>Departments</div>
-        {[
-          { label: 'New Business',  dept: 'New Business'  },
-          { label: 'Client-Facing', dept: 'Client-Facing' },
-        ].map(({ label, dept }) => {
-          const count = candidates.filter(c => {
-            const job = jobs.find(j => j.id === c.jobId);
-            return job?.department === dept && c.stage !== 'hired';
-          }).length;
+        {/* Recent candidates — quick access */}
+        {(() => {
+          const today = new Date('2026-04-14');
+          const recent = [...candidates]
+            .sort((a, b) => {
+              const aDate = a.notes.length > 0 ? a.notes[a.notes.length - 1].date : a.appliedAt;
+              const bDate = b.notes.length > 0 ? b.notes[b.notes.length - 1].date : b.appliedAt;
+              return new Date(bDate) - new Date(aDate);
+            })
+            .slice(0, 4);
           return (
-            <div key={dept} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '5px 10px', borderRadius: 8,
-            }}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)' }}>{count}</span>
-            </div>
+            <>
+              <div className="sidebar-section-label" style={{ marginTop: 14 }}>Recent</div>
+              {recent.map(c => {
+                const stage = PIPELINE_STAGES.find(s => s.id === c.stage);
+                const initials = c.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => onSelectCandidate?.(c.id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '5px 10px', borderRadius: 8, width: '100%',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      transition: 'background 0.15s', textAlign: 'left',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div
+                      className="avatar"
+                      style={{ background: c.avatarColor, width: 22, height: 22, fontSize: 8, flexShrink: 0 }}
+                    >
+                      {initials}
+                    </div>
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.name}
+                    </span>
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: '2px 5px',
+                      borderRadius: 4, background: stage?.bg, color: stage?.color,
+                      flexShrink: 0, whiteSpace: 'nowrap',
+                    }}>
+                      {stage?.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
           );
-        })}
+        })()}
       </nav>
 
       <div className="sidebar-footer">

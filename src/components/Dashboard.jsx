@@ -36,7 +36,7 @@ function StageBar({ stage, count, max }) {
   );
 }
 
-export default function Dashboard({ jobs, candidates, onViewPipeline, onViewJobs }) {
+export default function Dashboard({ jobs, candidates, onViewPipeline, onViewJobs, onSelectCandidate }) {
   const activeJobs = jobs.filter(j => j.status === 'active');
   const activeCandidates = candidates.filter(c => c.stage !== 'hired');
   const hired = candidates.filter(c => c.stage === 'hired');
@@ -222,17 +222,28 @@ export default function Dashboard({ jobs, candidates, onViewPipeline, onViewJobs
             const lastNote = c.notes[c.notes.length - 1];
             const job = null; // just show stage
             return (
-              <div key={c.id} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-                padding: '12px 0',
-                borderBottom: i < recentCandidates.length - 1 ? '1px solid var(--border)' : 'none',
-              }}>
+              <div
+                key={c.id}
+                onClick={() => onSelectCandidate?.(c.id)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  padding: '10px 8px', margin: '0 -8px',
+                  borderRadius: 8,
+                  borderBottom: i < recentCandidates.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
                 <div className="avatar avatar-md" style={{ background: c.avatarColor }}>
                   {c.name.split(' ').map(n => n[0]).join('').slice(0,2)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-hover)', textDecoration: 'underline', textDecorationColor: 'transparent', transition: 'text-decoration-color 0.15s' }}
+                      onMouseEnter={e => e.currentTarget.style.textDecorationColor = 'var(--accent-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.textDecorationColor = 'transparent'}
+                    >{c.name}</span>
                     <span className="badge" style={{ background: stage?.bg, color: stage?.color }}>
                       {stage?.label}
                     </span>

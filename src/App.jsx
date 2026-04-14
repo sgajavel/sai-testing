@@ -57,6 +57,7 @@ export default function App() {
         setActiveView={setActiveView}
         jobs={jobs}
         candidates={candidates}
+        onSelectCandidate={setSelectedCandidateId}
       />
 
       <main className="app-main">
@@ -66,6 +67,7 @@ export default function App() {
             candidates={candidates}
             onViewPipeline={goToPipeline}
             onViewJobs={() => setActiveView('jobs')}
+            onSelectCandidate={setSelectedCandidateId}
           />
         )}
         {activeView === 'jobs' && (
