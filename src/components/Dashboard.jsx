@@ -1,265 +1,150 @@
-import { Briefcase, Users, TrendingUp, CheckCircle, Clock, ArrowRight, ChevronRight } from 'lucide-react';
-import { PIPELINE_STAGES } from '../data/hiringData';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, Shield, ArrowRight } from 'lucide-react';
+import StatusBadge from './StatusBadge';
 
-const fmt = (n) => n?.toLocaleString() ?? '—';
+export default function Dashboard({ rules }) {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-function StatCard({ icon: Icon, iconBg, label, value, sub, subColor }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-icon" style={{ background: iconBg }}>
-        <Icon size={18} style={{ color: 'white' }} />
-      </div>
-      <div className="stat-value">{value}</div>
-      <div className="stat-label">{label}</div>
-      {sub && (
-        <div className="stat-change" style={{ color: subColor ?? 'var(--text-muted)' }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-}
+  const filtered = rules.filter(rule => {
+    const matchesSearch =
+      rule.id.toLowerCase().includes(search.toLowerCase()) ||
+      rule.insurer.toLowerCase().includes(search.toLowerCase()) ||
+      rule.category.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || rule.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
-function StageBar({ stage, count, max }) {
-  const pct = max > 0 ? (count / max) * 100 : 0;
-  return (
-    <div className="stage-bar-row">
-      <div className="stage-bar-label">{stage.label}</div>
-      <div className="stage-bar-track">
-        <div
-          className="stage-bar-fill"
-          style={{ width: `${pct}%`, background: stage.color }}
-        />
-      </div>
-      <div className="stage-bar-count">{count}</div>
-    </div>
-  );
-}
-
-export default function Dashboard({ jobs, candidates, onViewPipeline, onViewJobs, onSelectCandidate }) {
-  const activeJobs = jobs.filter(j => j.status === 'active');
-  const activeCandidates = candidates.filter(c => c.stage !== 'hired');
-  const hired = candidates.filter(c => c.stage === 'hired');
-  const today = new Date('2026-04-14');
-
-  // Avg days in pipeline for hired candidates
-  const avgDays = hired.length > 0
-    ? Math.round(hired.reduce((acc, c) => {
-        const diff = (today - new Date(c.appliedAt)) / (1000 * 60 * 60 * 24);
-        return acc + diff;
-      }, 0) / hired.length)
-    : null;
-
-  // Candidates by stage
-  const stageCounts = PIPELINE_STAGES.map(s => ({
-    ...s,
-    count: candidates.filter(c => c.stage === s.id).length,
-  }));
-  const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
-
-  // Roles by urgency (open longest with fewest late-stage candidates)
-  const urgentRoles = activeJobs.map(job => {
-    const jobCandidates = candidates.filter(c => c.jobId === job.id);
-    const lateStage = jobCandidates.filter(c =>
-      ['panel_interview', 'final_interview', 'offer_extended'].includes(c.stage)
-    ).length;
-    const daysOpen = Math.floor((today - new Date(job.postedAt)) / (1000 * 60 * 60 * 24));
-    return { ...job, candidateCount: jobCandidates.length, lateStage, daysOpen };
-  }).sort((a, b) => b.daysOpen - a.daysOpen);
-
-  // Recent candidate activity (last 5 updated)
-  const recentCandidates = [...candidates]
-    .filter(c => c.notes.length > 0)
-    .sort((a, b) => {
-      const aDate = a.notes[a.notes.length - 1]?.date ?? a.appliedAt;
-      const bDate = b.notes[b.notes.length - 1]?.date ?? b.appliedAt;
-      return new Date(bDate) - new Date(aDate);
-    })
-    .slice(0, 5);
-
-  const getStage = (id) => PIPELINE_STAGES.find(s => s.id === id);
-  const daysAgoLabel = (dateStr) => {
-    const diff = Math.floor((today - new Date(dateStr)) / (1000 * 60 * 60 * 24));
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    return `${diff}d ago`;
-  };
+  const counts = rules.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
-    <div className="dashboard">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>Hiring Dashboard</h1>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 3 }}>
-              Velocity Labs — Go-To-Market Recruiting &middot; Q2 2026
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary btn-sm" onClick={onViewJobs}>View Jobs</button>
-            <button className="btn btn-primary btn-sm" onClick={() => onViewPipeline('all')}>
-              Open Pipeline
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="stats-grid">
-        <StatCard
-          icon={Briefcase}
-          iconBg="linear-gradient(135deg,#6366f1,#8b5cf6)"
-          label="Open Positions"
-          value={activeJobs.length}
-          sub="Across GTM org"
-        />
-        <StatCard
-          icon={Users}
-          iconBg="linear-gradient(135deg,#ec4899,#f97316)"
-          label="Active Candidates"
-          value={activeCandidates.length}
-          sub="In pipeline"
-        />
-        <StatCard
-          icon={CheckCircle}
-          iconBg="linear-gradient(135deg,#10b981,#059669)"
-          label="Hired This Quarter"
-          value={hired.length}
-          sub="Target: 6"
-          subColor={hired.length >= 4 ? 'var(--green)' : 'var(--amber)'}
-        />
-        <StatCard
-          icon={Clock}
-          iconBg="linear-gradient(135deg,#f59e0b,#f97316)"
-          label="Avg. Days to Hire"
-          value={avgDays != null ? `${avgDays}d` : '—'}
-          sub={avgDays != null ? (avgDays <= 45 ? 'On track' : 'Above target') : 'No hires yet'}
-          subColor={avgDays != null && avgDays <= 45 ? 'var(--green)' : 'var(--amber)'}
-        />
-      </div>
-
-      {/* Middle row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
-        {/* Pipeline by stage */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Candidates by Stage</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>All active roles combined</div>
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 rounded-lg">
+              <Shield className="w-6 h-6 text-white" />
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => onViewPipeline('all')} style={{ gap: 4 }}>
-              View <ArrowRight size={13} />
-            </button>
-          </div>
-          <div className="stage-bars">
-            {stageCounts.map(s => (
-              <StageBar key={s.id} stage={s} count={s.count} max={maxCount} />
-            ))}
-          </div>
-        </div>
-
-        {/* Open roles urgency */}
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Open Roles</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>Sorted by time open</div>
+              <h1 className="text-2xl font-bold text-gray-900">Regulatory Review Dashboard</h1>
+              <p className="text-sm text-gray-500">AI-assisted auto insurance underwriting decline rule evaluation</p>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={onViewJobs} style={{ gap: 4 }}>
-              Manage <ArrowRight size={13} />
-            </button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {urgentRoles.map(role => {
-              const isUrgent = role.daysOpen > 30 && role.lateStage === 0;
-              return (
-                <div key={role.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 12px', borderRadius: 10,
-                    background: 'var(--bg-secondary)',
-                    border: `1px solid ${isUrgent ? 'rgba(239,68,68,0.2)' : 'var(--border)'}`,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  }}
-                  onClick={() => onViewPipeline(role.id)}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {role.title}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-                      {role.candidateCount} candidates &middot; {role.lateStage} late-stage
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: isUrgent ? 'var(--red)' : 'var(--text-muted)' }}>
-                      {role.daysOpen}d open
-                    </div>
-                    {isUrgent && (
-                      <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>Needs attention</div>
-                    )}
-                  </div>
-                  <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                </div>
-              );
-            })}
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Recent activity */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Recent Interview Activity</div>
-          <button className="btn btn-ghost btn-sm" onClick={() => onViewPipeline('all')} style={{ gap: 4 }}>
-            View Pipeline <ArrowRight size={13} />
-          </button>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats row */}
+        <div className="grid grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Total Rules', value: rules.length, color: 'text-gray-900', bg: 'bg-white' },
+            { label: 'Pending', value: counts.pending || 0, color: 'text-yellow-700', bg: 'bg-yellow-50' },
+            { label: 'Approved', value: counts.approved || 0, color: 'text-green-700', bg: 'bg-green-50' },
+            { label: 'Rejected', value: counts.rejected || 0, color: 'text-red-700', bg: 'bg-red-50' },
+          ].map(stat => (
+            <div key={stat.label} className={`${stat.bg} rounded-xl border border-gray-200 p-4`}>
+              <p className="text-sm text-gray-500 font-medium">{stat.label}</p>
+              <p className={`text-3xl font-bold mt-1 ${stat.color}`}>{stat.value}</p>
+            </div>
+          ))}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-          {recentCandidates.map((c, i) => {
-            const stage = getStage(c.stage);
-            const lastNote = c.notes[c.notes.length - 1];
-            const job = null; // just show stage
-            return (
-              <div
-                key={c.id}
-                onClick={() => onSelectCandidate?.(c.id)}
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 12,
-                  padding: '10px 8px', margin: '0 -8px',
-                  borderRadius: 8,
-                  borderBottom: i < recentCandidates.length - 1 ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+
+        {/* Filters */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by Rule ID, insurer, or category..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white appearance-none cursor-pointer"
               >
-                <div className="avatar avatar-md" style={{ background: c.avatarColor }}>
-                  {c.name.split(' ').map(n => n[0]).join('').slice(0,2)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-hover)', textDecoration: 'underline', textDecorationColor: 'transparent', transition: 'text-decoration-color 0.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.textDecorationColor = 'var(--accent-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.textDecorationColor = 'transparent'}
-                    >{c.name}</span>
-                    <span className="badge" style={{ background: stage?.bg, color: stage?.color }}>
-                      {stage?.label}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {lastNote?.content?.slice(0, 90)}{lastNote?.content?.length > 90 ? '…' : ''}
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}>
-                  {daysAgoLabel(lastNote?.date ?? c.appliedAt)}
-                </div>
-              </div>
-            );
-          })}
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="needs_review">Needs Review</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 w-24">Rule ID</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Insurer</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Category</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Rule Summary</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 w-32">Submitted</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 w-32">Status</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 w-24">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-gray-400">
+                      No rules match your search criteria.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map(rule => (
+                    <tr key={rule.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-semibold text-blue-700">{rule.id}</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 font-medium">{rule.insurer}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded-full">
+                          {rule.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 max-w-xs">
+                        <p className="truncate" title={rule.ruleText}>{rule.ruleText}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">{rule.dateSubmitted}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={rule.status} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => navigate(`/review/${rule.id}`)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          Review
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+            Showing {filtered.length} of {rules.length} rules
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
